@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Warning</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #172033; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    section { border: 1px solid #dfe4ec; border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+    input, select, button { padding: .5rem; margin: .25rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: .75rem; }
+    th, td { border-bottom: 1px solid #e8ebf0; text-align: left; padding: .55rem; }
+    button { cursor: pointer; }
+    .muted { color: #687386; }
+  </style>
+</head>
+<body>
+  <header><h1>视频报警监测</h1><span class="muted">安全帽检测 MVP</span></header>
+  <section>
+    <h2>登记并上传模型</h2>
+    <form id="model-form">
+      <input id="model_name" value="damoyolo safety helmet" required>
+      <select id="framework"><option value="modelscope">ModelScope</option><option value="onnx">ONNX</option><option value="torchscript">PyTorch</option></select>
+      <input id="model_source" value="https://www.modelscope.cn/models/iic/cv_tinynas_object-detection_damoyolo_safety-helmet" size="55" required>
+      <input id="model_file" type="file" accept=".onnx,.pt,.pth,.torchscript,.zip">
+      <button>登记模型</button>
+    </form>
+    <p id="model-status" class="muted"></p>
+  </section>
+  <section>
+    <h2>添加视频通道</h2>
+    <form id="channel-form">
+      <input id="name" placeholder="通道名称" required>
+      <select id="source_type"><option value="rtsp">RTSP</option><option value="gb28181">GB/T 28181</option><option value="hikvision_nvr">海康录像机</option></select>
+      <input id="stream_url" placeholder="流地址或设备标识" size="40" required>
+      <button>保存通道</button>
+    </form>
+  </section>
+  <section><h2>通道</h2><table><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>地址</th><th>操作</th></tr></thead><tbody id="channels"></tbody></table></section>
+  <section><h2>最近报警</h2><table><thead><tr><th>时间</th><th>通道</th><th>类型</th><th>置信度</th><th>状态</th><th>操作</th></tr></thead><tbody id="events"></tbody></table></section>
+  <script>
+    const api = (path, options) => fetch(path, {headers: {'Content-Type': 'application/json'}, ...options}).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)));
+    async function refresh() {
+      const [channels, events] = await Promise.all([api('/api/v1/channels'), api('/api/v1/events')]);
+      document.querySelector('#channels').innerHTML = channels.map(c => `<tr><td>${c.id}</td><td>${c.name}</td><td>${c.source_type}</td><td>${c.stream_url}</td><td><button onclick="addRule(${c.id})">启用安全帽规则</button></td></tr>`).join('');
+      document.querySelector('#events').innerHTML = events.map(e => `<tr><td>${new Date(e.created_at).toLocaleString()}</td><td>${e.channel_id}</td><td>${e.alarm_type}</td><td>${(e.confidence * 100).toFixed(1)}%</td><td>${e.status}</td><td>${e.status === 'open' ? `<button onclick="ack(${e.id})">确认</button>` : ''}${e.status !== 'closed' ? `<button onclick="closeEvent(${e.id})">关闭</button>` : ''}</td></tr>`).join('');
+    }
+    document.querySelector('#channel-form').onsubmit = async e => { e.preventDefault(); await api('/api/v1/channels', {method: 'POST', body: JSON.stringify({name: name.value, source_type: source_type.value, stream_url: stream_url.value})}); e.target.reset(); refresh(); };
+    document.querySelector('#model-form').onsubmit = async e => {
+      e.preventDefault();
+      const model = await api('/api/v1/models', {method: 'POST', body: JSON.stringify({name: model_name.value, framework: framework.value, source: model_source.value, labels: ['helmet', 'no_helmet']})});
+      const file = model_file.files[0];
+      if (file) {
+        const form = new FormData();
+        form.append('file', file);
+        const response = await fetch(`/api/v1/models/${model.id}/file`, {method: 'POST', body: form});
+        if (!response.ok) throw new Error('模型文件上传失败');
+      }
+      document.querySelector('#model-status').textContent = `模型 ${model.name} 已登记${file ? '并上传' : ''}`;
+    };
+    async function addRule(id) { await api('/api/v1/rules', {method: 'POST', body: JSON.stringify({channel_id: id})}); alert('安全帽规则已启用'); }
+    async function ack(id) { await api(`/api/v1/events/${id}/acknowledge`, {method: 'POST'}); refresh(); }
+    async function closeEvent(id) { await api(`/api/v1/events/${id}/close`, {method: 'POST'}); refresh(); }
+    refresh();
+  </script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+"""AI Warning application package."""
