@@ -5,48 +5,237 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AI Warning</title>
   <style>
-    body { font-family: system-ui, sans-serif; max-width: 1100px; margin: 2rem auto; padding: 0 1rem; color: #172033; }
-    header { display: flex; justify-content: space-between; align-items: center; }
-    section { border: 1px solid #dfe4ec; border-radius: 8px; padding: 1rem; margin-top: 1rem; }
-    input, select, button { padding: .5rem; margin: .25rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: .75rem; }
-    th, td { border-bottom: 1px solid #e8ebf0; text-align: left; padding: .55rem; }
-    button { cursor: pointer; }
-    .muted { color: #687386; }
+    :root {
+      --brand: #2b67f6;
+      --brand-strong: #1f52cb;
+      --danger: #e04848;
+      --danger-strong: #c43636;
+      --text: #172033;
+      --muted: #687386;
+      --bg: #f3f6fb;
+      --panel: #ffffff;
+      --line: #dfe4ec;
+      --menu: #0f1729;
+      --menu-active: #1d2740;
+      --menu-text: #c7d0e4;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; color: var(--text); background: var(--bg); }
+    .app { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+    .sidebar { background: var(--menu); color: var(--menu-text); padding: 1rem; box-shadow: 2px 0 16px rgba(6, 18, 38, .24); }
+    .brand { margin: .2rem 0 1rem; color: #fff; font-size: 1.1rem; font-weight: 700; }
+    .menu { display: flex; flex-direction: column; gap: .35rem; }
+    .menu button { width: 100%; border: 0; border-radius: 10px; padding: .68rem .75rem; text-align: left; background: transparent; color: var(--menu-text); cursor: pointer; transition: all .18s ease; }
+    .menu button:hover { background: rgba(255, 255, 255, .06); color: #fff; }
+    .menu button.active { background: var(--menu-active); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+    .menu button .icon { margin-right: .35rem; opacity: .95; }
+    .content { padding: 1.2rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+    .topbar h1 { margin: 0; font-size: 1.35rem; }
+    .muted { color: var(--muted); }
+    .panel { display: none; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 1rem; margin-bottom: 1rem; box-shadow: 0 6px 18px rgba(24, 37, 66, .06); }
+    .panel.active { display: block; }
+    .panel h2 { margin: .2rem 0 .9rem; }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: .8rem; }
+    .card { border: 1px solid #e6eaf2; border-radius: 12px; padding: .8rem; background: #fff; box-shadow: 0 3px 12px rgba(23, 32, 51, .04); }
+    .card .num { font-size: 1.5rem; font-weight: 700; margin-top: .25rem; }
+    input, select, button, textarea { padding: .55rem; margin: .25rem; border: 1px solid #cad3e1; border-radius: 8px; }
+    input, select, textarea { background: #fff; }
+    form { display: flex; flex-wrap: wrap; align-items: center; }
+    button { border: 1px solid var(--brand); background: var(--brand); color: #fff; cursor: pointer; transition: all .16s ease; }
+    button:hover { background: var(--brand-strong); border-color: var(--brand-strong); }
+    .btn-ghost { background: #fff; color: var(--brand); border-color: #b6cbff; }
+    .btn-ghost:hover { background: #edf3ff; border-color: #8db1ff; }
+    .btn-danger { background: var(--danger); border-color: var(--danger); }
+    .btn-danger:hover { background: var(--danger-strong); border-color: var(--danger-strong); }
+    .tag { display: inline-block; padding: .2rem .5rem; border-radius: 999px; font-size: .8rem; font-weight: 600; }
+    .tag-open { background: #ffe6e6; color: #b53232; }
+    .tag-ack { background: #fff4dd; color: #b87800; }
+    .tag-closed { background: #e9edf4; color: #5b6473; }
+    textarea { width: 100%; }
+    table { border-collapse: collapse; width: 100%; margin-top: .75rem; background: #fff; border-radius: 10px; overflow: hidden; }
+    th, td { border-bottom: 1px solid #e8ebf0; text-align: left; padding: .55rem; font-size: .93rem; vertical-align: top; }
+    thead th { background: #f8faff; }
+    tbody tr:nth-child(2n) { background: #fcfdff; }
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: sticky; top: 0; z-index: 5; }
+      .menu { flex-direction: row; flex-wrap: wrap; }
+      .menu button { width: auto; }
+      .cards { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+    }
   </style>
 </head>
 <body>
-  <header><h1>视频报警监测</h1><span class="muted">安全帽检测 MVP</span></header>
-  <section>
-    <h2>登记并上传模型</h2>
-    <form id="model-form">
-      <input id="model_name" value="damoyolo safety helmet" required>
-      <select id="framework"><option value="modelscope">ModelScope</option><option value="onnx">ONNX</option><option value="torchscript">PyTorch</option></select>
-      <input id="model_source" value="https://www.modelscope.cn/models/iic/cv_tinynas_object-detection_damoyolo_safety-helmet" size="55" required>
-      <input id="model_file" type="file" accept=".onnx,.pt,.pth,.torchscript,.zip">
-      <button>登记模型</button>
-    </form>
-    <p id="model-status" class="muted"></p>
-  </section>
-  <section>
-    <h2>添加视频通道</h2>
-    <form id="channel-form">
-      <input id="name" placeholder="通道名称" required>
-      <select id="source_type"><option value="rtsp">RTSP</option><option value="gb28181">GB/T 28181</option><option value="hikvision_nvr">海康录像机</option></select>
-      <input id="stream_url" placeholder="流地址或设备标识" size="40" required>
-      <button>保存通道</button>
-    </form>
-  </section>
-  <section><h2>通道</h2><table><thead><tr><th>ID</th><th>名称</th><th>类型</th><th>地址</th><th>操作</th></tr></thead><tbody id="channels"></tbody></table></section>
-  <section><h2>最近报警</h2><table><thead><tr><th>时间</th><th>通道</th><th>类型</th><th>置信度</th><th>状态</th><th>操作</th></tr></thead><tbody id="events"></tbody></table></section>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">AI Warning</div>
+      <nav class="menu" id="menu">
+        <button class="active" data-target="overview-panel"><span class="icon">📊</span>总览</button>
+        <button data-target="model-panel"><span class="icon">🧠</span>模型管理</button>
+        <button data-target="channel-panel"><span class="icon">📷</span>通道接入</button>
+        <button data-target="onvif-panel"><span class="icon">🔌</span>ONVIF 接入</button>
+        <button data-target="batch-panel"><span class="icon">📥</span>批量导入</button>
+        <button data-target="rule-panel"><span class="icon">⚙️</span>规则管理</button>
+        <button data-target="event-panel"><span class="icon">🚨</span>报警事件</button>
+      </nav>
+    </aside>
+
+    <main class="content">
+      <div class="topbar">
+        <h1>视频报警监测后台</h1>
+        <span id="current-panel-name" class="muted">总览</span>
+      </div>
+
+      <section id="overview-panel" class="panel active">
+        <h2>系统总览</h2>
+        <div class="cards">
+          <div class="card"><div class="muted">通道数</div><div id="metric-channels" class="num">0</div></div>
+          <div class="card"><div class="muted">规则数</div><div id="metric-rules" class="num">0</div></div>
+          <div class="card"><div class="muted">未关闭告警</div><div id="metric-open-events" class="num">0</div></div>
+          <div class="card"><div class="muted">模型数</div><div id="metric-models" class="num">0</div></div>
+        </div>
+      </section>
+
+      <section id="model-panel" class="panel">
+        <h2>模型管理</h2>
+        <form id="model-form">
+          <input id="model_name" value="damoyolo safety helmet" required>
+          <select id="framework"><option value="modelscope">ModelScope</option><option value="onnx">ONNX</option><option value="torchscript">PyTorch</option></select>
+          <input id="model_source" value="https://www.modelscope.cn/models/iic/cv_tinynas_object-detection_damoyolo_safety-helmet" size="55" required>
+          <input id="model_file" type="file" accept=".onnx,.pt,.pth,.torchscript,.zip">
+          <button>登记模型</button>
+        </form>
+        <p id="model-status" class="muted"></p>
+        <table>
+          <thead><tr><th>ID</th><th>名称</th><th>框架</th><th>状态</th><th>来源</th></tr></thead>
+          <tbody id="models"></tbody>
+        </table>
+      </section>
+
+      <section id="channel-panel" class="panel">
+        <h2>通道接入（默认启用安全帽规则）</h2>
+        <form id="channel-form">
+          <input id="name" placeholder="通道名称" required>
+          <select id="source_type"><option value="rtsp">RTSP</option><option value="gb28181">GB/T 28181</option><option value="hikvision_nvr">海康录像机</option><option value="onvif">ONVIF</option></select>
+          <input id="stream_url" placeholder="流地址或设备标识" size="40" required>
+          <input id="preview_url" placeholder="预览地址(可选，http/https)" size="40">
+          <button>一键接入</button>
+        </form>
+        <table>
+          <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>地址</th><th>预览地址</th><th>操作</th></tr></thead>
+          <tbody id="channels"></tbody>
+        </table>
+        <section id="preview-panel" class="panel" style="display:none;margin-top:1rem;">
+          <h3>通道预览</h3>
+          <p id="preview-message" class="muted"></p>
+          <video id="preview-video" controls autoplay muted style="width:100%;max-height:420px;background:#000"></video>
+        </section>
+      </section>
+
+      <section id="onvif-panel" class="panel">
+        <h2>ONVIF 接入（探测并生成流地址）</h2>
+        <form id="onvif-form">
+          <input id="onvif_name" placeholder="通道名称" required>
+          <input id="onvif_host" placeholder="设备IP/域名" required>
+          <input id="onvif_port" type="number" min="1" max="65535" value="80" required>
+          <input id="onvif_username" placeholder="用户名" required>
+          <input id="onvif_password" type="password" placeholder="密码" required>
+          <input id="onvif_profile_token" placeholder="ProfileToken(可选)">
+          <select id="onvif_transport"><option value="RTSP">RTSP</option><option value="HTTP">HTTP</option><option value="UDP">UDP</option></select>
+          <input id="onvif_preview_url" placeholder="预览地址(可选，http/https)" size="40">
+          <button>探测并一键接入</button>
+        </form>
+        <p id="onvif-status" class="muted"></p>
+      </section>
+
+      <section id="batch-panel" class="panel">
+        <h2>批量添加通道（CSV 预览后导入）</h2>
+        <form id="batch-form">
+          <input id="batch_file" type="file" accept=".csv" required>
+          <input id="batch_model_id" type="number" min="1" placeholder="可选：模型ID">
+          <button type="button" id="preview-batch" class="btn-ghost">预览</button>
+          <button type="submit">确认导入</button>
+        </form>
+        <p class="muted">CSV 表头：name,source_type,stream_url,preview_url（source_type 可留空，默认 rtsp）</p>
+        <p id="batch-status" class="muted"></p>
+        <table>
+          <thead><tr><th>行号</th><th>名称</th><th>类型</th><th>地址</th><th>校验</th></tr></thead>
+          <tbody id="batch-preview"></tbody>
+        </table>
+      </section>
+
+      <section id="rule-panel" class="panel">
+        <h2>规则管理（支持多规则 + 区域）</h2>
+        <form id="rule-form">
+          <select id="rule_channel_id" required></select>
+          <select id="rule_alarm_type">
+            <option value="no_helmet">未戴安全帽</option>
+            <option value="helmet">戴安全帽</option>
+            <option value="intrusion">区域入侵</option>
+            <option value="crowding">人员聚集</option>
+          </select>
+          <input id="rule_confidence" type="number" min="0" max="1" step="0.01" value="0.6" required>
+          <input id="rule_duration" type="number" min="0" step="0.1" value="1.0" required>
+          <input id="rule_cooldown" type="number" min="0" step="1" value="60" required>
+          <input id="rule_model_id" type="number" min="1" placeholder="模型ID(可选)">
+          <button>添加规则</button>
+        </form>
+        <textarea id="rule_roi" rows="3" placeholder='ROI 可选，示例：[[0.1,0.1],[0.9,0.1],[0.9,0.9],[0.1,0.9]]'></textarea>
+        <table><thead><tr><th>ID</th><th>通道</th><th>类型</th><th>阈值</th><th>持续</th><th>冷却</th><th>区域</th></tr></thead><tbody id="rules"></tbody></table>
+      </section>
+
+      <section id="event-panel" class="panel">
+        <h2>最近报警</h2>
+        <table><thead><tr><th>时间</th><th>通道</th><th>类型</th><th>置信度</th><th>位置</th><th>留证</th><th>状态</th><th>操作</th></tr></thead><tbody id="events"></tbody></table>
+      </section>
+    </main>
+  </div>
+
   <script>
     const api = (path, options) => fetch(path, {headers: {'Content-Type': 'application/json'}, ...options}).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)));
-    async function refresh() {
-      const [channels, events] = await Promise.all([api('/api/v1/channels'), api('/api/v1/events')]);
-      document.querySelector('#channels').innerHTML = channels.map(c => `<tr><td>${c.id}</td><td>${c.name}</td><td>${c.source_type}</td><td>${c.stream_url}</td><td><button onclick="addRule(${c.id})">启用安全帽规则</button></td></tr>`).join('');
-      document.querySelector('#events').innerHTML = events.map(e => `<tr><td>${new Date(e.created_at).toLocaleString()}</td><td>${e.channel_id}</td><td>${e.alarm_type}</td><td>${(e.confidence * 100).toFixed(1)}%</td><td>${e.status}</td><td>${e.status === 'open' ? `<button onclick="ack(${e.id})">确认</button>` : ''}${e.status !== 'closed' ? `<button onclick="closeEvent(${e.id})">关闭</button>` : ''}</td></tr>`).join('');
+    let batchRows = [];
+
+    function statusTag(status) {
+      if (status === 'open') return '<span class="tag tag-open">未处理</span>';
+      if (status === 'acknowledged') return '<span class="tag tag-ack">已确认</span>';
+      return '<span class="tag tag-closed">已关闭</span>';
     }
-    document.querySelector('#channel-form').onsubmit = async e => { e.preventDefault(); await api('/api/v1/channels', {method: 'POST', body: JSON.stringify({name: name.value, source_type: source_type.value, stream_url: stream_url.value})}); e.target.reset(); refresh(); };
+
+    function switchPanel(targetId) {
+      document.querySelectorAll('.menu button').forEach(button => button.classList.toggle('active', button.dataset.target === targetId));
+      document.querySelectorAll('.content > .panel').forEach(panel => panel.classList.toggle('active', panel.id === targetId));
+      const activeButton = document.querySelector(`.menu button[data-target="${targetId}"]`);
+      if (activeButton) {
+        document.querySelector('#current-panel-name').textContent = activeButton.textContent.trim();
+      }
+    }
+
+    async function refresh() {
+      const [channels, events, rules, models] = await Promise.all([api('/api/v1/channels'), api('/api/v1/events'), api('/api/v1/rules'), api('/api/v1/models')]);
+      document.querySelector('#channels').innerHTML = channels.map(c => `<tr><td>${c.id}</td><td>${c.name}</td><td>${c.source_type}</td><td>${c.stream_url}</td><td>${c.preview_url || '-'}</td><td><button class="btn-ghost" onclick="previewChannel(${c.id})">预览</button></td></tr>`).join('');
+      document.querySelector('#events').innerHTML = events.map(e => `<tr><td>${new Date(e.created_at).toLocaleString()}</td><td>${e.channel_id}</td><td>${e.alarm_type}</td><td>${(e.confidence * 100).toFixed(1)}%</td><td>${e.alarm_position ? JSON.stringify(e.alarm_position) : '-'}</td><td>${e.snapshot_path ? `<a href="/api/v1/events/${e.id}/image" target="_blank">查看图片</a>` : '-'}</td><td>${statusTag(e.status)}</td><td>${e.status === 'open' ? `<button class="btn-ghost" onclick="ack(${e.id})">确认</button>` : ''}${e.status !== 'closed' ? `<button class="btn-danger" onclick="closeEvent(${e.id})">关闭</button>` : ''}</td></tr>`).join('');
+      document.querySelector('#rules').innerHTML = rules.map(r => `<tr><td>${r.id}</td><td>${r.channel_id}</td><td>${r.alarm_type}</td><td>${r.confidence}</td><td>${r.duration_seconds}s</td><td>${r.cooldown_seconds}s</td><td>${r.roi_polygon ? JSON.stringify(r.roi_polygon) : '-'}</td></tr>`).join('');
+      document.querySelector('#models').innerHTML = models.map(m => `<tr><td>${m.id}</td><td>${m.name}</td><td>${m.framework}</td><td>${m.status}</td><td>${m.source}</td></tr>`).join('');
+      const selector = document.querySelector('#rule_channel_id');
+      selector.innerHTML = channels.map(c => `<option value="${c.id}">${c.id} - ${c.name}</option>`).join('');
+      document.querySelector('#metric-channels').textContent = channels.length;
+      document.querySelector('#metric-rules').textContent = rules.length;
+      document.querySelector('#metric-open-events').textContent = events.filter(e => e.status !== 'closed').length;
+      document.querySelector('#metric-models').textContent = models.length;
+    }
+
+    document.querySelectorAll('.menu button').forEach(button => button.onclick = () => switchPanel(button.dataset.target));
+
+    document.querySelector('#channel-form').onsubmit = async e => {
+      e.preventDefault();
+      await api('/api/v1/channels/quick-create', {method: 'POST', body: JSON.stringify({name: name.value, source_type: source_type.value, stream_url: stream_url.value, preview_url: preview_url.value || null})});
+      e.target.reset();
+      await refresh();
+    };
+
     document.querySelector('#model-form').onsubmit = async e => {
       e.preventDefault();
       const model = await api('/api/v1/models', {method: 'POST', body: JSON.stringify({name: model_name.value, framework: framework.value, source: model_source.value, labels: ['helmet', 'no_helmet']})});
@@ -58,10 +247,113 @@
         if (!response.ok) throw new Error('模型文件上传失败');
       }
       document.querySelector('#model-status').textContent = `模型 ${model.name} 已登记${file ? '并上传' : ''}`;
+      await refresh();
     };
-    async function addRule(id) { await api('/api/v1/rules', {method: 'POST', body: JSON.stringify({channel_id: id})}); alert('安全帽规则已启用'); }
-    async function ack(id) { await api(`/api/v1/events/${id}/acknowledge`, {method: 'POST'}); refresh(); }
-    async function closeEvent(id) { await api(`/api/v1/events/${id}/close`, {method: 'POST'}); refresh(); }
+
+    document.querySelector('#preview-batch').onclick = async () => {
+      const file = batch_file.files[0];
+      if (!file) {
+        alert('请先选择 CSV 文件');
+        return;
+      }
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch('/api/v1/channels/batch-preview', {method: 'POST', body: form});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || '预览失败');
+      batchRows = data.rows || [];
+      document.querySelector('#batch-preview').innerHTML = batchRows.map(r => `<tr><td>${r.line_number}</td><td>${r.name}</td><td>${r.source_type}</td><td>${r.stream_url}</td><td>${r.valid ? '通过' : `失败：${r.error}`}</td></tr>`).join('');
+      document.querySelector('#batch-status').textContent = `共 ${data.total} 行，校验通过 ${data.valid_count} 行，失败 ${data.invalid_count} 行`;
+    };
+
+    document.querySelector('#batch-form').onsubmit = async e => {
+      e.preventDefault();
+      const validRows = batchRows.filter(r => r.valid).map(r => ({name: r.name, source_type: r.source_type, stream_url: r.stream_url, preview_url: r.preview_url || null}));
+      if (!validRows.length) {
+        alert('没有可导入的有效行，请先预览并修复 CSV');
+        return;
+      }
+      const modelId = batch_model_id.value ? Number(batch_model_id.value) : null;
+      const payload = {rows: validRows};
+      if (modelId) payload.model_id = modelId;
+      const result = await api('/api/v1/channels/batch-create', {method: 'POST', body: JSON.stringify(payload)});
+      document.querySelector('#batch-status').textContent = `导入完成：成功 ${result.created_count} 条`;
+      await refresh();
+    };
+
+    document.querySelector('#onvif-form').onsubmit = async e => {
+      e.preventDefault();
+      const probe = await api('/api/v1/onvif/probe-stream', {
+        method: 'POST',
+        body: JSON.stringify({
+          host: onvif_host.value,
+          port: Number(onvif_port.value),
+          username: onvif_username.value,
+          password: onvif_password.value,
+          profile_token: onvif_profile_token.value || null,
+          transport: onvif_transport.value
+        })
+      });
+      await api('/api/v1/channels/quick-create', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: onvif_name.value,
+          source_type: 'onvif',
+          stream_url: probe.stream_url,
+          preview_url: onvif_preview_url.value || null,
+          onvif_params: {
+            host: onvif_host.value,
+            port: Number(onvif_port.value),
+            username: onvif_username.value,
+            profile_token: probe.profile_token,
+            device_service_url: probe.device_service_url,
+            transport: probe.transport
+          }
+        })
+      });
+      document.querySelector('#onvif-status').textContent = `探测成功：${probe.stream_url}`;
+      e.target.reset();
+      await refresh();
+    };
+
+    document.querySelector('#rule-form').onsubmit = async e => {
+      e.preventDefault();
+      let roiPolygon = null;
+      const roiRaw = rule_roi.value.trim();
+      if (roiRaw) roiPolygon = JSON.parse(roiRaw);
+      const payload = {
+        channel_id: Number(rule_channel_id.value),
+        alarm_type: rule_alarm_type.value,
+        confidence: Number(rule_confidence.value),
+        duration_seconds: Number(rule_duration.value),
+        cooldown_seconds: Number(rule_cooldown.value),
+        roi_polygon: roiPolygon,
+      };
+      if (rule_model_id.value) payload.model_id = Number(rule_model_id.value);
+      await api('/api/v1/rules', {method: 'POST', body: JSON.stringify(payload)});
+      rule_roi.value = '';
+      await refresh();
+    };
+
+    async function previewChannel(channelId) {
+      const data = await api(`/api/v1/channels/${channelId}/preview`);
+      const panel = document.querySelector('#preview-panel');
+      const message = document.querySelector('#preview-message');
+      const video = document.querySelector('#preview-video');
+      switchPanel('channel-panel');
+      panel.style.display = 'block';
+      message.textContent = data.message;
+      if (data.playable_in_browser && data.preview_url) {
+        video.src = data.preview_url;
+      } else {
+        video.removeAttribute('src');
+        video.load();
+      }
+    }
+
+    async function ack(id) { await api(`/api/v1/events/${id}/acknowledge`, {method: 'POST'}); await refresh(); }
+    async function closeEvent(id) { await api(`/api/v1/events/${id}/close`, {method: 'POST'}); await refresh(); }
+
     refresh();
   </script>
 </body>

@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from pathlib import Path
 
 from app.main import app
 
@@ -41,3 +42,175 @@ def test_register_and_upload_model(tmp_path, monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["status"] == "ready"
+
+
+def test_quick_create_channel_with_default_rule():
+    response = client.post(
+        "/api/v1/channels/quick-create",
+        json={
+            "name": "一键通道",
+            "source_type": "rtsp",
+            "stream_url": "rtsp://example/quick-cam",
+            "preview_url": "https://example.com/quick.m3u8",
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["channel"]["name"] == "一键通道"
+    assert payload["channel"]["preview_url"] == "https://example.com/quick.m3u8"
+    assert payload["rule"]["channel_id"] == payload["channel"]["id"]
+    assert payload["rule"]["alarm_type"] == "no_helmet"
+
+
+def test_channel_preview_info():
+    channel = client.post(
+        "/api/v1/channels",
+        json={
+            "name": "预览通道",
+            "source_type": "rtsp",
+            "stream_url": "rtsp://example/live",
+            "preview_url": "https://example.com/live.mp4",
+        },
+    ).json()
+    preview = client.get(f"/api/v1/channels/{channel['id']}/preview")
+    assert preview.status_code == 200
+    payload = preview.json()
+    assert payload["playable_in_browser"] is True
+    assert payload["preview_url"] == "https://example.com/live.mp4"
+
+
+def test_batch_preview_channels_csv():
+    content = (
+        "name,source_type,stream_url\n"
+        "北门通道,rtsp,rtsp://example/north\n"
+        "坏通道,invalid,rtsp://example/bad\n"
+    ).encode("utf-8")
+    response = client.post(
+        "/api/v1/channels/batch-preview",
+        files={"file": ("channels.csv", content, "text/csv")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 2
+    assert payload["valid_count"] == 1
+    assert payload["invalid_count"] == 1
+    assert payload["rows"][1]["valid"] is False
+
+
+def test_batch_create_channels_with_default_rule():
+    response = client.post(
+        "/api/v1/channels/batch-create",
+        json={
+            "rows": [
+                {"name": "批量通道1", "source_type": "rtsp", "stream_url": "rtsp://example/b1"},
+                {"name": "批量通道2", "source_type": "gb28181", "stream_url": "device://34020000001320000001"},
+            ]
+        },
+    )
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["created_count"] == 2
+    assert payload["failed_count"] == 0
+    assert payload["channels"][0]["rule"]["alarm_type"] == "no_helmet"
+
+
+def test_rule_with_roi_polygon_filters_detection():
+    channel = client.post(
+        "/api/v1/channels",
+        json={"name": "ROI通道", "source_type": "rtsp", "stream_url": "rtsp://example/roi"},
+    ).json()
+    rule = client.post(
+        "/api/v1/rules",
+        json={
+            "channel_id": channel["id"],
+            "alarm_type": "intrusion",
+            "cooldown_seconds": 0,
+            "roi_polygon": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]],
+        },
+    )
+    assert rule.status_code == 201
+    hit = client.post(
+        "/api/v1/detections",
+        json={
+            "channel_id": channel["id"],
+            "detections": [{"type": "intrusion", "confidence": 0.95, "bbox": [0.2, 0.2, 0.3, 0.3]}],
+        },
+    )
+    miss = client.post(
+        "/api/v1/detections",
+        json={
+            "channel_id": channel["id"],
+            "detections": [{"type": "intrusion", "confidence": 0.95, "bbox": [0.95, 0.95, 0.99, 0.99]}],
+        },
+    )
+    assert hit.status_code == 200
+    assert len(hit.json()) == 1
+    assert miss.status_code == 200
+    assert len(miss.json()) == 0
+
+
+def test_detection_saves_image_and_position(tmp_path, monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main, "EVENT_IMAGE_DIRECTORY", tmp_path)
+    channel = client.post(
+        "/api/v1/channels",
+        json={"name": "留证通道", "source_type": "rtsp", "stream_url": "rtsp://example/evidence"},
+    ).json()
+    client.post("/api/v1/rules", json={"channel_id": channel["id"], "cooldown_seconds": 0, "alarm_type": "no_helmet"})
+    response = client.post(
+        "/api/v1/detections",
+        json={
+            "channel_id": channel["id"],
+            "image_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8Xw8AAoMBgQfS6l0AAAAASUVORK5CYII=",
+            "detections": [{"type": "no_helmet", "confidence": 0.91, "bbox": [0.2, 0.3, 0.4, 0.5]}],
+        },
+    )
+    assert response.status_code == 200
+    event = response.json()[0]
+    assert event["alarm_position"]["bbox"] == [0.2, 0.3, 0.4, 0.5]
+    saved_path = Path(event["snapshot_path"])
+    assert saved_path.exists()
+    image_resp = client.get(f"/api/v1/events/{event['id']}/image")
+    assert image_resp.status_code == 200
+
+
+def test_onvif_probe_and_quick_create(monkeypatch):
+    from app import main
+
+    def fake_detect_onvif_stream(**_: dict):
+        return {
+            "stream_url": "rtsp://camera.local/Streaming/Channels/101",
+            "profile_token": "profile-main",
+            "media_service_url": "http://camera.local/onvif/media_service",
+            "device_service_url": "http://camera.local/onvif/device_service",
+            "transport": "RTSP",
+        }
+
+    monkeypatch.setattr(main, "detect_onvif_stream", fake_detect_onvif_stream)
+    probe = client.post(
+        "/api/v1/onvif/probe-stream",
+        json={"host": "camera.local", "port": 80, "username": "admin", "password": "pass12345", "transport": "RTSP"},
+    )
+    assert probe.status_code == 200
+    stream = probe.json()
+    created = client.post(
+        "/api/v1/channels/quick-create",
+        json={
+            "name": "ONVIF通道",
+            "source_type": "onvif",
+            "stream_url": stream["stream_url"],
+            "onvif_params": {
+                "host": "camera.local",
+                "port": 80,
+                "username": "admin",
+                "profile_token": stream["profile_token"],
+                "device_service_url": stream["device_service_url"],
+                "transport": stream["transport"],
+            },
+        },
+    )
+    assert created.status_code == 201
+    payload = created.json()
+    assert payload["channel"]["source_type"] == "onvif"
+    assert payload["channel"]["onvif_params"]["host"] == "camera.local"
