@@ -15,7 +15,8 @@
 - 报警规则支持连续触发时长和冷却时间，避免单帧误报与重复报警
 - 报警事件创建、查询、确认和关闭
 - 模型登记与上传，支持 ModelScope 仓库地址及 ONNX/PyTorch 模型文件
-- 统一的检测结果接口，可由真实模型服务或视频采集器调用
+- 独立视频采集 worker，可对接真实模型推理服务并自动提交检测结果
+- 统一的检测结果接口，负责应用报警规则并创建事件
 - SQLite 开箱即用，后续可切换 PostgreSQL
 - 简单管理端页面，便于验证 API 和业务闭环
 
@@ -32,12 +33,24 @@ uvicorn app.main:app --reload
 
 ## 接入说明
 
-当前工程提供统一视频源和检测结果 API。实际部署时：
+工程包含独立的视频采集 worker。worker 从启用通道读取视频帧，按通道规则调用推理服务，并把检测结果提交到 `POST /api/v1/detections`。推理服务与 Web API 分离，便于按部署环境使用 ONNX Runtime、PyTorch 或 GPU 推理。
 
-1. 视频采集器从 RTSP、GB/T 28181 或海康录像机通道取得帧。
-2. 采集器调用 `POST /api/v1/detections` 提交检测结果。
-3. API 根据通道规则执行持续时间、置信度和冷却判定，必要时创建报警事件。
-4. 后续可将采集器替换为 FFmpeg/GStreamer worker，并将 SQLite 替换为 PostgreSQL。
+启动 API 后，在另一个终端配置推理服务地址并启动 worker：
+
+```powershell
+$env:AIWARNING_API_URL = "http://127.0.0.1:8000"
+$env:AIWARNING_INFERENCE_URL = "http://127.0.0.1:9000/infer"
+$env:AIWARNING_FRAME_INTERVAL_SECONDS = "1"
+python -m app.worker
+```
+
+推理服务需提供 `POST /infer` 风格的 JSON 接口。worker 发送 `channel_id`、JPEG 的 Base64 字符串 `image_base64` 和该通道启用规则（包含 `model_id`、`alarm_type` 与置信度阈值）；服务返回 `{"detections":[...]}`。检测项格式示例：
+
+```json
+{"type":"no_helmet","confidence":0.93,"bbox":[0.2,0.1,0.4,0.6]}
+```
+
+worker 会把结果和命中帧留证提交给现有检测 API；无命中时也会提交空检测，以正确重置连续触发状态。`bbox` 如用于 ROI 判定，应使用与 ROI 一致的归一化坐标。worker 目前逐通道顺序处理采样帧；大规模部署可按摄像头数量横向启动多个 worker，并为 RTSP/GB28181 输入配置支持相应协议的 OpenCV FFmpeg 构建。
 
 检测结果上报支持直接附带 `image_base64`，系统会自动落盘图片并记录到事件 `snapshot_path`，同时提取命中目标位置到 `alarm_position`。
 

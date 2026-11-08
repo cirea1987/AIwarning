@@ -243,3 +243,85 @@ def test_onvif_probe_and_quick_create(monkeypatch):
     payload = created.json()
     assert payload["channel"]["source_type"] == "onvif"
     assert payload["channel"]["onvif_params"]["host"] == "camera.local"
+
+
+def test_worker_submits_frame_and_evidence_only_for_detections():
+    import base64
+
+    from app.worker import submit_frame
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.payload
+
+    class FakeHttpClient:
+        def __init__(self, detections):
+            self.calls = []
+            self.detections = detections
+
+        def post(self, url, json):
+            self.calls.append((url, json))
+            if url == "http://inference.local/infer":
+                return FakeResponse({"detections": self.detections})
+            return FakeResponse([])
+
+    class FakeCv2:
+        @staticmethod
+        def imencode(extension, frame):
+            assert extension == ".jpg"
+            assert frame == "frame"
+            return True, b"jpeg-data"
+
+    http_client = FakeHttpClient([{"type": "no_helmet", "confidence": "0.91"}])
+    result = submit_frame(
+        channel_id=7,
+        frame="frame",
+        rules=[{"id": 3, "model_id": 2, "alarm_type": "no_helmet", "confidence": 0.6}],
+        cv2_module=FakeCv2,
+        http_client=http_client,
+        api_url="http://api.local/",
+        inference_url="http://inference.local/infer",
+    )
+
+    encoded_frame = base64.b64encode(b"jpeg-data").decode("ascii")
+    assert result == []
+    assert http_client.calls[0][1] == {
+        "channel_id": 7,
+        "image_base64": encoded_frame,
+        "rules": [{"id": 3, "model_id": 2, "alarm_type": "no_helmet", "confidence": 0.6}],
+    }
+    assert http_client.calls[1] == (
+        "http://api.local/api/v1/detections",
+        {
+            "channel_id": 7,
+            "detections": [{"type": "no_helmet", "confidence": 0.91}],
+            "image_base64": encoded_frame,
+        },
+    )
+
+    empty_client = FakeHttpClient([])
+    submit_frame(
+        channel_id=7,
+        frame="frame",
+        rules=[],
+        cv2_module=FakeCv2,
+        http_client=empty_client,
+        api_url="http://api.local",
+        inference_url="http://inference.local/infer",
+    )
+    assert empty_client.calls[1][1] == {"channel_id": 7, "detections": []}
+
+
+def test_worker_rejects_invalid_inference_detections():
+    import pytest
+
+    from app.worker import normalize_detections
+
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        normalize_detections({"detections": [{"type": "no_helmet", "confidence": 1.2}]})
