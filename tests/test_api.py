@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from pathlib import Path
+import time
 
 from app.main import app
 
@@ -11,7 +12,10 @@ def test_channel_rule_and_detection_flow():
         "/api/v1/channels",
         json={"name": "测试通道", "source_type": "rtsp", "stream_url": "rtsp://example/cam"},
     ).json()
-    rule = client.post("/api/v1/rules", json={"channel_id": channel["id"], "cooldown_seconds": 0}).json()
+    rule = client.post(
+        "/api/v1/rules",
+        json={"channel_id": channel["id"], "duration_seconds": 0, "cooldown_seconds": 0},
+    ).json()
     response = client.post(
         "/api/v1/detections",
         json={"channel_id": channel["id"], "detections": [{"type": "no_helmet", "confidence": 0.9}]},
@@ -124,6 +128,7 @@ def test_rule_with_roi_polygon_filters_detection():
         json={
             "channel_id": channel["id"],
             "alarm_type": "intrusion",
+            "duration_seconds": 0,
             "cooldown_seconds": 0,
             "roi_polygon": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]],
         },
@@ -149,6 +154,27 @@ def test_rule_with_roi_polygon_filters_detection():
     assert len(miss.json()) == 0
 
 
+def test_detection_waits_for_rule_duration():
+    channel = client.post(
+        "/api/v1/channels",
+        json={"name": "持续时长通道", "source_type": "rtsp", "stream_url": "rtsp://example/duration"},
+    ).json()
+    client.post(
+        "/api/v1/rules",
+        json={"channel_id": channel["id"], "duration_seconds": 0.05, "cooldown_seconds": 60},
+    )
+    detection = {
+        "channel_id": channel["id"],
+        "detections": [{"type": "no_helmet", "confidence": 0.95}],
+    }
+    assert client.post("/api/v1/detections", json=detection).json() == []
+    time.sleep(0.08)
+    assert len(client.post("/api/v1/detections", json=detection).json()) == 1
+    assert client.post("/api/v1/detections", json=detection).json() == []
+    empty = client.post("/api/v1/detections", json={"channel_id": channel["id"], "detections": []})
+    assert empty.json() == []
+
+
 def test_detection_saves_image_and_position(tmp_path, monkeypatch):
     from app import main
 
@@ -157,7 +183,10 @@ def test_detection_saves_image_and_position(tmp_path, monkeypatch):
         "/api/v1/channels",
         json={"name": "留证通道", "source_type": "rtsp", "stream_url": "rtsp://example/evidence"},
     ).json()
-    client.post("/api/v1/rules", json={"channel_id": channel["id"], "cooldown_seconds": 0, "alarm_type": "no_helmet"})
+    client.post(
+        "/api/v1/rules",
+        json={"channel_id": channel["id"], "duration_seconds": 0, "cooldown_seconds": 0, "alarm_type": "no_helmet"},
+    )
     response = client.post(
         "/api/v1/detections",
         json={
