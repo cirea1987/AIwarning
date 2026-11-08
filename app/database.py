@@ -62,6 +62,11 @@ def init_db() -> None:
                 acknowledged_at TEXT,
                 closed_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS alarm_rule_states (
+                rule_id INTEGER PRIMARY KEY REFERENCES alarm_rules(id) ON DELETE CASCADE,
+                first_detected_at TEXT NOT NULL,
+                last_detected_at TEXT NOT NULL
+            );
             """
         )
         columns = {row["name"] for row in connection.execute("PRAGMA table_info(alarm_rules)")}

@@ -638,10 +638,32 @@ def submit_detection(payload: DetectionCreate) -> List[Dict]:
                         filtered.append(item)
                 matching = filtered
             if not matching:
+                connection.execute("DELETE FROM alarm_rule_states WHERE rule_id = ?", (rule["id"],))
                 continue
+            state = connection.execute(
+                "SELECT first_detected_at FROM alarm_rule_states WHERE rule_id = ?",
+                (rule["id"],),
+            ).fetchone()
+            if state is None:
+                connection.execute(
+                    """INSERT INTO alarm_rule_states (rule_id, first_detected_at, last_detected_at)
+                    VALUES (?, ?, ?)""",
+                    (rule["id"], now, now),
+                )
+                if rule["duration_seconds"] > 0:
+                    continue
+            else:
+                connection.execute(
+                    "UPDATE alarm_rule_states SET last_detected_at = ? WHERE rule_id = ?",
+                    (now, rule["id"]),
+                )
+                first_detected_at = datetime.fromisoformat(state["first_detected_at"])
+                elapsed_seconds = (datetime.fromisoformat(now) - first_detected_at).total_seconds()
+                if elapsed_seconds < rule["duration_seconds"]:
+                    continue
             recent = connection.execute(
                 """SELECT 1 FROM alarm_events
-                WHERE rule_id = ? AND created_at >= datetime('now', ?)
+                WHERE rule_id = ? AND julianday(created_at) >= julianday('now', ?)
                 ORDER BY id DESC LIMIT 1""",
                 (rule["id"], f"-{rule['cooldown_seconds']} seconds"),
             ).fetchone()

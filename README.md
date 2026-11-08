@@ -12,6 +12,7 @@
 - ONVIF 一键探测并生成流地址
 - 规则支持多类型与 ROI 区域（归一化坐标）
 - 报警位置提取（bbox/点位）与报警图片留证落盘
+- 报警规则支持连续触发时长和冷却时间，避免单帧误报与重复报警
 - 报警事件创建、查询、确认和关闭
 - 模型登记与上传，支持 ModelScope 仓库地址及 ONNX/PyTorch 模型文件
 - 统一的检测结果接口，可由真实模型服务或视频采集器调用
@@ -39,6 +40,8 @@ uvicorn app.main:app --reload
 4. 后续可将采集器替换为 FFmpeg/GStreamer worker，并将 SQLite 替换为 PostgreSQL。
 
 检测结果上报支持直接附带 `image_base64`，系统会自动落盘图片并记录到事件 `snapshot_path`，同时提取命中目标位置到 `alarm_position`。
+
+报警规则的 `duration_seconds` 表示检测条件需要连续保持的时间；首次命中只记录规则状态，达到时长后才创建事件。检测条件消失会重置该状态，`cooldown_seconds` 则限制同一规则重复创建事件的频率。
 
 ## 傻瓜化配置（推荐）
 
